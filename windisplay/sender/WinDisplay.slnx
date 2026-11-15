@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WinDisplay.Cli/WinDisplay.Cli.csproj" />
+    <Project Path="src/WinDisplay.Core/WinDisplay.Core.csproj" />
+    <Project Path="src/WinDisplay.Tray/WinDisplay.Tray.csproj" />
+    <Project Path="src/WinDisplay.Win/WinDisplay.Win.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WinDisplay.Tests/WinDisplay.Tests.csproj" />
+    <Project Path="tests/WinDisplay.Win.Tests/WinDisplay.Win.Tests.csproj" />
+  </Folder>
+</Solution>

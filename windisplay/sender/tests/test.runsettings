@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 两个测试工程共用的运行设置（Directory.Build.props 里的 RunSettingsFilePath 指到这里，dotnet test 自动带上）。
+     只管一件事：有测试卡住时整轮测试变红，而不是一直挂着。连着这么久没有任何一条测试跑完，就结束测试进程、
+     报出当时在跑的是哪一条（不留内存转储）。正常一整轮十几秒，单条最长的两三秒。 -->
+<RunSettings>
+  <RunConfiguration>
+    <!-- 上面那个收集器每跑一轮都要留一个结果目录（多半是空的）：放到 sender/.work/ 下面（不入库），不在测试工程里越攒越多。
+         相对路径是相对这个文件说的 -->
+    <ResultsDirectory>../.work/TestResults</ResultsDirectory>
+  </RunConfiguration>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="blame" enabled="True">
+        <Configuration>
+          <CollectDumpOnTestSessionHang TestTimeout="90s" HangDumpType="none" />
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

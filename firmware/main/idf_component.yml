@@ -1,0 +1,26 @@
+## Tab5 无线显示固件的依赖。
+## dependencies.lock 不入库：esp_hosted 用的是工程内的副本（override_path），锁文件里会记下它在本机的绝对路径，换一台机器就对不上。
+## 所以版本都在这里钉死（含 BSP 等带进来的间接依赖）：不然组件管理器重算依赖时会把它们升到最新。要升级就改这里的版本号。
+dependencies:
+  idf: '>=5.4'
+  espressif/esp_lcd_ili9881c: ==1.1.0
+  ## 以下几项是 components/m5stack_tab5、esp_wifi_remote 等带进来的，本工程不直接用，只为钉住版本
+  espressif/esp_lcd_st7703: ==1.0.5
+  espressif/esp_lcd_touch: ==1.2.1
+  espressif/esp_lcd_touch_gt911: ==1.2.0~2
+  espressif/esp_lcd_touch_st7123: ==1.0.2
+  espressif/esp_codec_dev: ==1.5.10
+  espressif/usb_host_hid: ==1.2.0
+  espressif/esp_serial_slave_link: ==1.1.2
+  espressif/cmake_utilities: ==0.5.3
+  ## LVGL 用的是 dependencies/lvgl 里的源码（上游 v9.2.2，build.sh 取；同名的本地组件盖过组件库的）。这里钉同一个版本：
+  ## 不经 build.sh 直接 idf.py build、又没有那个目录时，组件管理器取到的也是 9.2.2，不是最新版
+  lvgl/lvgl: ==9.2.2
+  ## WiFi：P4 自身无线不可用，由板载 ESP32-C6 经 SDIO 提供（版本与官方 UserDemo 一致）
+  ## esp_hosted 用工程内的副本（components/esp_hosted，源自官方 1.4.0，只留主机侧）：
+  ## 本工程改了它的 SDIO 收发缓冲（定长、有上限、分配失败丢包不断言），改动说明见该目录的 LOCAL_CHANGES.md。
+  espressif/esp_hosted:
+    version: 1.4.0
+    override_path: ../components/esp_hosted
+  espressif/esp_wifi_remote: ==0.8.5
+  espressif/eppp_link: ==1.1.5

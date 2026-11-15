@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 托盘程序（WinDisplayTray.exe）：常驻，自动找 Tab5、连上去显示主显示器的画面，把 Tab5 上的触摸和按键注入这台电脑。
+       界面只有托盘图标和一个设置窗口。只能在 Windows 11 上跑；Linux 上能编译，不能跑。
+       逻辑都在 WinDisplay.Core 的 SenderHost（连接）和 TrayView（界面上显示什么），这里只管画和接线。 -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>WinDisplayTray</AssemblyName>
+    <RootNamespace>WinDisplay.Tray</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 设置窗口和对话框的接线在 tests/WinDisplay.Win.Tests 里测（只在 Windows 上跑） -->
+    <InternalsVisibleTo Include="WinDisplay.Win.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WinDisplay.Core/WinDisplay.Core.csproj" />
+    <ProjectReference Include="../WinDisplay.Win/WinDisplay.Win.csproj" />
+  </ItemGroup>
+</Project>

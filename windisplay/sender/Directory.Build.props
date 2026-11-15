@@ -1,0 +1,15 @@
+<Project>
+  <!-- 全解决方案统一的编译设置 -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <Deterministic>true</Deterministic>
+    <!-- 允许在 Linux 上编译 net10.0-windows 项目；真正运行只能在 Windows -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Version>0.1.0</Version>
+    <!-- 测试的运行设置：有测试卡住时结束这一轮并报出是哪一条（见 tests/test.runsettings） -->
+    <RunSettingsFilePath>$(MSBuildThisFileDirectory)tests/test.runsettings</RunSettingsFilePath>
+  </PropertyGroup>
+</Project>

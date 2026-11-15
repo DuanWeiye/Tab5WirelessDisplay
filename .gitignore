@@ -1,0 +1,29 @@
+# ── 构建产物（可重建）──────────────────────────────────────────
+build/
+**/build/
+sdkconfig.old
+*.bin
+*.elf
+*.map
+__pycache__/
+*.pyc
+
+# ── 依赖：managed_components 由组件管理器按 main/idf_component.yml 钉的版本下载；dependencies/lvgl 由 build.sh 取 ──
+# 锁文件里有 esp_hosted 本地副本的绝对路径，各机不同，不入库
+firmware/managed_components/
+firmware/dependencies/
+firmware/dependencies.lock
+
+# ── 字体源文件：只用于生成 firmware/main/ui/fonts/*.c，生成物已入库 ──
+*.zip
+*.ttf
+
+# ── 各人各机一份的东西 ────────────────────────────────────────
+# Tab5 的串口和局域网地址（见 firmware/tools/tab5_env.sh）
+firmware/tools/local.env
+# 真机测试的日志
+firmware/tools/dispbench/logs/
+# 测试工具的配对存储（里面有配对密钥；写到一半的临时文件也是这个开头）
+windisplay/tools/.wdpair*
+
+.DS_Store

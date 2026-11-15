@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Windows 专有部分的单元测试：显卡上的缩放对不对（对着 CPU 上的对照实现逐像素比）、数据保护和开机启动、
+       托盘程序的设置窗口和对话框（给窗口发鼠标消息，看点的是不是那一行）。只在 Windows 上跑
+       （scripts/winsync.sh 的 test 模式；经 ssh 也能跑，没有显卡可用时退到软件渲染）。Linux 开发机上只编译、不运行。
+       真的去抓屏那一段不在这里测（要在桌面会话里）：用 wdsend 的 screen-check 选项。 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+    <RootNamespace>WinDisplay.Win.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <UseWindowsForms>true</UseWindowsForms>
+    <IsTestProject Condition="!$([MSBuild]::IsOSPlatform('Windows'))">false</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/WinDisplay.Win/WinDisplay.Win.csproj" />
+    <ProjectReference Include="../../src/WinDisplay.Tray/WinDisplay.Tray.csproj" />
+  </ItemGroup>
+</Project>

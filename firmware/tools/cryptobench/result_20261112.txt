@@ -1,0 +1,49 @@
+CPU 现在 360 MHz（拿着满速锁）
+ChaCha20-Poly1305 自检：加密 rc=0，解密 rc=0，解出来是原文，改一个字节后解密 rc=-86（应该不是 0）
+ChaCha20 寄存器写法和 mbedtls 的输出一样（对齐）、一样（没对齐）
+== 数据在 PSRAM ==
+memcpy（参照）       PSRAM   6 KB：525487 KB/s，一次     11 µs
+ChaCha20-Poly1305        PSRAM   6 KB：  6804 KB/s，一次    881 µs
+  其中 ChaCha20        PSRAM   6 KB：  8938 KB/s，一次    671 µs
+  ChaCha20 寄存器写法 PSRAM   6 KB： 11900 KB/s，一次    504 µs
+  其中 Poly1305        PSRAM   6 KB： 29596 KB/s，一次    202 µs
+AES-128-GCM              PSRAM   6 KB：   803 KB/s，一次   7467 µs
+AES-128-CTR              PSRAM   6 KB：  4417 KB/s，一次   1358 µs
+HMAC-SHA256              PSRAM   6 KB：  4532 KB/s，一次   1323 µs
+memcpy（参照）       PSRAM  48 KB：357916 KB/s，一次    134 µs
+ChaCha20-Poly1305        PSRAM  48 KB：  6842 KB/s，一次   7014 µs
+  其中 ChaCha20        PSRAM  48 KB：  8944 KB/s，一次   5366 µs
+  ChaCha20 寄存器写法 PSRAM  48 KB： 11900 KB/s，一次   4033 µs
+  其中 Poly1305        PSRAM  48 KB： 29742 KB/s，一次   1613 µs
+AES-128-GCM              PSRAM  48 KB：   806 KB/s，一次  59498 µs
+AES-128-CTR              PSRAM  48 KB：  4430 KB/s，一次  10834 µs
+HMAC-SHA256              PSRAM  48 KB：  4766 KB/s，一次  10069 µs
+memcpy（参照）       PSRAM 256 KB： 57895 KB/s，一次   4421 µs
+ChaCha20-Poly1305        PSRAM 256 KB：  6486 KB/s，一次  39465 µs
+  其中 ChaCha20        PSRAM 256 KB：  8589 KB/s，一次  29805 µs
+  ChaCha20 寄存器写法 PSRAM 256 KB： 11193 KB/s，一次  22869 µs
+  其中 Poly1305        PSRAM 256 KB： 26130 KB/s，一次   9796 µs
+AES-128-GCM              PSRAM 256 KB：   803 KB/s，一次 318564 µs
+AES-128-CTR              PSRAM 256 KB：  4345 KB/s，一次  58916 µs
+HMAC-SHA256              PSRAM 256 KB：  4652 KB/s，一次  55023 µs
+== 数据在内部 RAM ==
+memcpy（参照）       内部   6 KB：538569 KB/s，一次     11 µs
+ChaCha20-Poly1305        内部   6 KB：  6795 KB/s，一次    882 µs
+  其中 ChaCha20        内部   6 KB：  8905 KB/s，一次    673 µs
+  ChaCha20 寄存器写法 内部   6 KB： 11910 KB/s，一次    503 µs
+  其中 Poly1305        内部   6 KB： 29601 KB/s，一次    202 µs
+AES-128-GCM              内部   6 KB：   803 KB/s，一次   7467 µs
+AES-128-CTR              内部   6 KB：  4432 KB/s，一次   1353 µs
+HMAC-SHA256              内部   6 KB：  4534 KB/s，一次   1323 µs
+memcpy（参照）       内部  16 KB：537532 KB/s，一次     29 µs
+ChaCha20-Poly1305        内部  16 KB：  6839 KB/s，一次   2339 µs
+  其中 ChaCha20        内部  16 KB：  8941 KB/s，一次   1789 µs
+  ChaCha20 寄存器写法 内部  16 KB： 11885 KB/s，一次   1346 µs
+  其中 Poly1305        内部  16 KB： 29729 KB/s，一次    538 µs
+AES-128-GCM              内部  16 KB：   806 KB/s，一次  19843 µs
+AES-128-CTR              内部  16 KB：  4435 KB/s，一次   3607 µs
+HMAC-SHA256              内部  16 KB：  4698 KB/s，一次   3405 µs
+X25519：生成密钥对 56 ms，算共享密钥 59 ms（rc=0）
+X25519：生成密钥对 57 ms，算共享密钥 56 ms（rc=0）
+X25519：生成密钥对 56 ms，算共享密钥 58 ms（rc=0）
+量完了，CPU 现在 360 MHz

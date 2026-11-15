@@ -1,0 +1,335 @@
+diff --git firmware/components/esp_hosted/host/drivers/rpc/core/rpc_core.c firmware/components/esp_hosted/host/drivers/rpc/core/rpc_core.c
+index 3e9cf97..61f7646 100644
+--- firmware/components/esp_hosted/host/drivers/rpc/core/rpc_core.c
++++ firmware/components/esp_hosted/host/drivers/rpc/core/rpc_core.c
+@@ -703,6 +703,9 @@ static int set_async_resp_callback(ctrl_cmd_t *app_req, rpc_rsp_cb_t resp_cb)
+  * In case of synchronous request, valid callback will be cached
+  * This sem will posted after receiving the mapping response
+  **/
++/* TESTBUILD 故障注入（不提交）：接下来这么多个同步请求的信号量当作建不出来（内部内存用光） */
++volatile int testbuild_sem_fail;
++
+ static int set_sync_resp_sem(ctrl_cmd_t *app_req)
+ {
+ 	int exp_resp_msg_id = (app_req->msg_id - RPC_ID__Req_Base + RPC_ID__Resp_Base);
+@@ -717,6 +720,11 @@ static int set_sync_resp_sem(ctrl_cmd_t *app_req)
+ 	} else if (!app_req->rpc_rsp_cb) {
+ 		/* For sync, set sem */
+ 		app_req->rx_sem = g_h.funcs->_h_create_semaphore(1);
++		if (testbuild_sem_fail > 0 && app_req->rx_sem) {   /* TESTBUILD：当作信号量建不出来 */
++			testbuild_sem_fail--;
++			g_h.funcs->_h_destroy_semaphore(app_req->rx_sem);
++			app_req->rx_sem = NULL;
++		}
+ 		if (!app_req->rx_sem) {
+ 			/* 本工程改动：信号量建不出来（内部内存用光）就不登记、这次请求按失败返回。
+ 			 * 登记一个空信号量的话，等待方看到空就直接返回、不注销，这个表项和之后到的应答都收不回来；
+diff --git firmware/components/esp_hosted/host/drivers/transport/sdio/sdio_drv.c firmware/components/esp_hosted/host/drivers/transport/sdio/sdio_drv.c
+index 0f310e9..878642e 100644
+--- firmware/components/esp_hosted/host/drivers/transport/sdio/sdio_drv.c
++++ firmware/components/esp_hosted/host/drivers/transport/sdio/sdio_drv.c
+@@ -28,6 +28,7 @@
+ #include "tcp_ack_hold.h"
+ #include "esp_heap_caps.h"
+ #include "esp_system.h"
++#include "esp_attr.h"     /* TESTBUILD */
+ 
+ static const char TAG[] = "H_SDIO_DRV";
+ 
+@@ -172,6 +173,22 @@ static uint32_t tx_slave_buf_waits;  /* 从机一时没有空的接收缓冲、
+ static uint32_t tx_throttle_starts;  /* 从机叫主机暂停往 WiFi 发的次数 */
+ static uint32_t tx_drop_no_slave_buf;/* 等到头从机还是没有空的接收缓冲，丢掉的包数 */
+ 
++/* TESTBUILD 故障注入（不提交）：
++ * 1 = 下一笔读取跳过并当作出错（从机没发出来），一次；3 = 同 1，但一直如此（重读也失败）；
++ * 2 = 下一笔照读、读完当作出错（从机发了、主机没收到），一次；4 = 同 2，但只挑分了段的突发的非末段；
++ * 5 = 每次突发的第一个包头都弄坏（流一直错位）；6 = 同 5，只弄坏一次；
++ * 7 = 读寄存器一直当作出错；8 = 读寄存器当作出错，一次（重读应该成功）；
++ * 9 = 读任务在下一次中断之后先睡 8 秒再读，一次（让在途的 RPC 应答迟到） */
++volatile int testbuild_rx_fault;
++/* TESTBUILD 发送侧故障注入（不提交）：1 = 查从机发送缓冲数一直报"从机不响应"；2 = 写数据一直当作失败 */
++volatile int testbuild_tx_fault;
++/* TESTBUILD 开机阶段的故障注入（不提交）。放 RTC 内存：软件重启后还在，别的复位之后作废。
++ * 1 = SDIO 卡初始化失败；2 = 数据一直读不出来（= 接收注入 3，从 INIT 事件那次突发起）；
++ * 3 = INIT 事件收到就丢（从机一直不就绪）；4 = 寄存器一直读不出来（= 接收注入 7） */
++RTC_NOINIT_ATTR uint32_t testbuild_boot_fault;
++RTC_NOINIT_ATTR uint32_t testbuild_boot_magic;
++#define TESTBUILD_BOOT_MAGIC 0x54424654u
++
+ static esp_err_t sdio_generate_slave_intr(uint8_t intr_no);
+ 
+ static void sdio_write_task(void const* pvParameters);
+@@ -299,6 +316,9 @@ static int sdio_get_tx_buffer_num(uint32_t *tx_num, bool is_lock_needed)
+ 	uint32_t len = 0;
+ 	int ret = 0;
+ 
++	if (testbuild_tx_fault == 1)   /* TESTBUILD */
++		return ESP_HOSTED_SDIO_UNRESPONSIVE_CODE;
++
+ 	ret = g_h.funcs->_h_sdio_read_reg(sdio_handle, ESP_SLAVE_TOKEN_RDATA, (uint8_t *)&len,
+ 		sizeof(len), is_lock_needed);
+ 
+@@ -409,6 +429,9 @@ static int sdio_is_write_buffer_available(uint32_t buf_needed)
+ 	uint8_t retry = MAX_WRITE_BUF_RETRIES;
+ 	uint32_t max_retry_sdio_not_responding = 2;
+ 
++	if (testbuild_tx_fault == 1)   /* TESTBUILD：不用攒着的额度，逼它去查寄存器 */
++		buf_available = 0;
++
+ 	/*If buffer needed are less than buffer available
+ 	  then only read for available buffer number from slave*/
+ 	if (buf_available < buf_needed) {
+@@ -589,6 +612,8 @@ static void sdio_write_task(void const* pvParameters)
+ 			ret = g_h.funcs->_h_sdio_write_block(sdio_handle, ESP_SLAVE_CMD53_END_ADDR - data_left,
+ 				pos, len_to_send, ACQUIRE_LOCK);
+ #endif
++			if (testbuild_tx_fault == 2)   /* TESTBUILD */
++				ret = -1;
+ 			if (ret) {
+ 				ESP_LOGE(TAG, "%s: %d: Failed to send data: %d %ld %ld", __func__,
+ 					retries, ret, len_to_send, data_left);
+@@ -790,6 +815,9 @@ static void sdio_read_task(void const* pvParameters)
+ 		}
+ 	}
+ 
++	if (testbuild_boot_fault == 1)   /* TESTBUILD */
++		res = ESP_FAIL;
++	else
+ 	res = g_h.funcs->_h_sdio_card_init(sdio_handle);
+ 	if (res != ESP_OK) {
+ 		/* 本工程改动：原版在这里从任务函数返回（= abort）。走重启恢复；没重启就是判定故障了，停住。 */
+@@ -835,6 +863,13 @@ static void sdio_read_task(void const* pvParameters)
+ 			continue;
+ 		}
+ 
++		if (testbuild_rx_fault == 9) {   /* TESTBUILD */
++			testbuild_rx_fault = 0;
++			ESP_LOGE(TAG, "TESTBUILD 注入 9：读任务睡 8 秒");
++			vTaskDelay(pdMS_TO_TICKS(8000));
++			ESP_LOGE(TAG, "TESTBUILD 注入 9：读任务醒了");
++		}
++
+ 		SDIO_DRV_LOCK();
+ 
+ #if DO_COMBINED_REG_READ
+@@ -842,6 +877,13 @@ static void sdio_read_task(void const* pvParameters)
+ 		 * 还不行就走重启恢复（理由见 sdio_recover_by_restart 第 3 条）。 */
+ 		for (retries = 0; ; retries++) {
+ 			ret = sdio_read_regs(reg_buf);
++			if (testbuild_rx_fault == 7)   /* TESTBUILD */
++				ret = -1;
++			if (testbuild_rx_fault == 8) {   /* TESTBUILD */
++				testbuild_rx_fault = 0;
++				ret = -1;
++				ESP_LOGE(TAG, "TESTBUILD 注入 8：读寄存器当作出错一次");
++			}
+ 			if (!ret)
+ 				break;
+ 			rx_read_err_last = ret;
+@@ -941,9 +983,32 @@ static void sdio_read_task(void const* pvParameters)
+ 			 * 只有最后一段可能不是整块，补齐不会读走后面的真数据。
+ 			 */
+ 			uint32_t block_read_len = ((len_to_read + ESP_BLOCK_SIZE - 1) / ESP_BLOCK_SIZE) * ESP_BLOCK_SIZE;
++			int tb_fault = testbuild_rx_fault;   /* TESTBUILD */
++			if (tb_fault == 4 && data_left <= len_to_read)
++				tb_fault = 0;                    /* TESTBUILD：4 只挑非末段 */
++			if (tb_fault == 1 || tb_fault == 3) {   /* TESTBUILD */
++				if (tb_fault == 1) {
++					testbuild_rx_fault = 0;
++					ESP_LOGE(TAG, "TESTBUILD 注入 1：跳过一笔读取（%"PRIu32" 字节，这次突发共 %"PRIu32"）", len_to_read, len_from_slave);
++				}
++				ret = -1;
++			} else
+ 			ret = g_h.funcs->_h_sdio_read_block(sdio_handle,
+ 					ESP_SLAVE_CMD53_END_ADDR - data_left,
+ 					pos, block_read_len, ACQUIRE_LOCK);
++			if (!ret && (tb_fault == 2 || tb_fault == 4)) {   /* TESTBUILD */
++				testbuild_rx_fault = 0;
++				ret = -1;
++				ESP_LOGE(TAG, "TESTBUILD 注入 %d：读完当作出错（%"PRIu32" 字节，这次突发共 %"PRIu32"，还剩 %"PRIu32"）",
++						tb_fault, len_to_read, len_from_slave, data_left - len_to_read);
++			}
++			if (!ret && (tb_fault == 5 || tb_fault == 6) && carry == 0 && stream_ok) {   /* TESTBUILD */
++				if (tb_fault == 6) {
++					testbuild_rx_fault = 0;
++					ESP_LOGE(TAG, "TESTBUILD 注入 6：弄坏一个包头（这次突发共 %"PRIu32"）", len_from_slave);
++				}
++				memset(pos, 0, 8);
++			}
+ #else
+ 			ret = g_h.funcs->_h_sdio_read_block(sdio_handle,
+ 					ESP_SLAVE_CMD53_END_ADDR - data_left,
+@@ -1074,6 +1139,8 @@ static void sdio_process_rx_task(void const* pvParameters)
+ 						buf_handle->payload, NULL, buf_handle->payload_len);
+ 			}
+ #endif
++		} else if (buf_handle->if_type == ESP_PRIV_IF && testbuild_boot_fault == 3) {   /* TESTBUILD */
++			ESP_LOGE(TAG, "TESTBUILD 开机注入 3：丢掉 INIT 事件");
+ 		} else if (buf_handle->if_type == ESP_PRIV_IF) {
+ 			process_priv_communication(buf_handle);
+ 			hci_drv_show_configuration();
+@@ -1113,6 +1180,19 @@ void transport_init_internal(void)
+ 	uint8_t prio_q_idx = 0;
+ 	/* register callback */
+ 
++	/* TESTBUILD：开机阶段的注入只在软件重启之后有效 */
++	if (testbuild_boot_magic != TESTBUILD_BOOT_MAGIC || esp_reset_reason() != ESP_RST_SW) {
++		testbuild_boot_magic = 0;
++		testbuild_boot_fault = 0;
++	}
++	if (testbuild_boot_fault) {
++		ESP_LOGE(TAG, "TESTBUILD 开机注入 %"PRIu32, testbuild_boot_fault);
++		if (testbuild_boot_fault == 2)
++			testbuild_rx_fault = 3;
++		if (testbuild_boot_fault == 4)
++			testbuild_rx_fault = 7;
++	}
++
+ 	sdio_bus_lock = g_h.funcs->_h_create_mutex();
+ 	assert(sdio_bus_lock);
+ 
+diff --git firmware/main/debug_console.cpp firmware/main/debug_console.cpp
+index a10d203..ec1ef46 100644
+--- firmware/main/debug_console.cpp
++++ firmware/main/debug_console.cpp
+@@ -128,8 +128,140 @@ static void cmd_ext5v(const char* arg)
+ 
+ // WiFi-SDIO（esp-hosted）收发缓冲的用量和丢包计数。
+ //   hosted ackhold <微秒>   TCP 纯 ACK 最多暂存多久（0 = 不合并；不落盘，重启后回到默认值），新旧对比用
++#include <esp_timer.h>    // TESTBUILD
++#include <esp_system.h>   // TESTBUILD
++extern "C" volatile int testbuild_rx_fault;   // TESTBUILD
++extern "C" volatile int testbuild_tx_fault;   // TESTBUILD
++extern "C" volatile int testbuild_sem_fail;   // TESTBUILD
++extern "C" uint32_t testbuild_boot_fault;     // TESTBUILD
++extern "C" uint32_t testbuild_boot_magic;     // TESTBUILD
++// TESTBUILD：这些文字的 label 是界面上和无线模块故障有关的东西
++static const char* const TB_UI_NEEDLES[] = {
++    "故障", "无线模块故障", "重启", "取消", "等待连接", "已连接", "解绑",
++    LV_SYMBOL_WARNING, LV_SYMBOL_WIFI, LV_SYMBOL_SETTINGS, LV_SYMBOL_BLUETOOTH,
++};
++static const char* tb_ui_name(const char* t)
++{
++    if (strcmp(t, LV_SYMBOL_WARNING) == 0)   return "<警告图标>";
++    if (strcmp(t, LV_SYMBOL_WIFI) == 0)      return "<WiFi图标>";
++    if (strcmp(t, LV_SYMBOL_SETTINGS) == 0)  return "<齿轮图标>";
++    if (strcmp(t, LV_SYMBOL_BLUETOOTH) == 0) return "<蓝牙图标>";
++    return t;
++}
++// TESTBUILD：遍历对象树。needle == nullptr：打印 TB_UI_NEEDLES 里的 label 的坐标 / 是否可见 / 文字颜色 / 可不可点；
++// 否则返回第一个可见的、文字等于 needle（exact）或以 needle 开头的 label。
++static lv_obj_t* tb_ui_walk(lv_obj_t* o, bool hidden, const char* needle, bool exact = false)
++{
++    hidden = hidden || lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN);
++    if (lv_obj_check_type(o, &lv_label_class)) {
++        const char* t = lv_label_get_text(o);
++        if (t && needle) {
++            if (!hidden && (exact ? strcmp(t, needle) == 0 : strncmp(t, needle, strlen(needle)) == 0)) return o;
++        } else if (t) {
++            for (const char* nd : TB_UI_NEEDLES) {
++                if (strncmp(t, nd, strlen(nd)) != 0) continue;
++                lv_area_t a;
++                lv_obj_get_coords(o, &a);
++                lv_color_t c = lv_obj_get_style_text_color(o, LV_PART_MAIN);
++                ESP_LOGW(TAG, "TESTBUILD uifind: %s  x %d~%d  y %d~%d  %s  颜色 %02x%02x%02x  %s",
++                         tb_ui_name(t), (int)a.x1, (int)a.x2, (int)a.y1, (int)a.y2, hidden ? "隐藏" : "可见",
++                         c.red, c.green, c.blue,
++                         lv_obj_has_flag(o, LV_OBJ_FLAG_CLICKABLE) ? "可点" : "");
++                break;
++            }
++        }
++    }
++    uint32_t n = lv_obj_get_child_count(o);
++    for (uint32_t i = 0; i < n; i++) {
++        lv_obj_t* r = tb_ui_walk(lv_obj_get_child(o, i), hidden, needle, exact);
++        if (r) return r;
++    }
++    return nullptr;
++}
+ static void cmd_hosted(const char* arg)
+ {
++    if (strcmp(arg, "uifind") == 0) {          // TESTBUILD：核对界面的故障显示
++        bsp_display_lock(0);
++        tb_ui_walk(lv_screen_active(), false, nullptr);
++        tb_ui_walk(lv_layer_top(), false, nullptr);
++        bsp_display_unlock();
++        ESP_LOGW(TAG, "TESTBUILD uifind: 完（wifi state=%d）", (int)wifi::status().state);
++        return;
++    }
++    if (strncmp(arg, "uiclick ", 8) == 0) {    // TESTBUILD：点一下文字等于参数的 label，没有就找以参数开头的（它自己不可点就点它的父对象）
++        bsp_display_lock(0);
++        lv_obj_t* o = nullptr;
++        for (int exact = 1; exact >= 0 && !o; exact--) {
++            o = tb_ui_walk(lv_layer_top(), false, arg + 8, exact != 0);
++            if (!o) o = tb_ui_walk(lv_screen_active(), false, arg + 8, exact != 0);
++        }
++        if (o && !lv_obj_has_flag(o, LV_OBJ_FLAG_CLICKABLE)) o = lv_obj_get_parent(o);
++        ESP_LOGW(TAG, "TESTBUILD uiclick: %s %s", arg + 8, o ? "点下去" : "没找到");
++        if (o) lv_obj_send_event(o, LV_EVENT_CLICKED, nullptr);
++        bsp_display_unlock();
++        return;
++    }
++    if (strncmp(arg, "bootfault ", 10) == 0) { // TESTBUILD：开机阶段的故障注入（下一次软件重启起生效；0 = 撤掉）
++        testbuild_boot_fault = (uint32_t)atoi(arg + 10);
++        testbuild_boot_magic = testbuild_boot_fault ? 0x54424654u : 0;
++        ESP_LOGW(TAG, "TESTBUILD: testbuild_boot_fault=%u", (unsigned)testbuild_boot_fault);
++        return;
++    }
++    if (strncmp(arg, "txfault ", 8) == 0) {    // TESTBUILD：发送侧故障注入
++        testbuild_tx_fault = atoi(arg + 8);
++        ESP_LOGW(TAG, "TESTBUILD: testbuild_tx_fault=%d", (int)testbuild_tx_fault);
++        return;
++    }
++    if (strcmp(arg, "swreset") == 0) {         // TESTBUILD：和 SDIO 无关的软件重启
++        ESP_LOGW(TAG, "TESTBUILD: esp_restart()");
++        esp_restart();
++    }
++    if (strcmp(arg, "uitest") == 0) {          // TESTBUILD：拿着 LVGL 锁、照界面的方式调 wifi 接口，量每一步耗时
++        bsp_display_lock(0);
++        int64_t t0 = esp_timer_get_time();
++        wifi::set_enabled(!wifi::enabled());   // 设置页的 WiFi 开关
++        int64_t t1 = esp_timer_get_time();
++        wifi::set_enabled(!wifi::enabled());
++        int64_t t2 = esp_timer_get_time();
++        bool sc = wifi::scan_start();          // WiFi 页的扫描
++        int64_t t3 = esp_timer_get_time();
++        wifi::SavedNet nets[wifi::MAX_SAVED];
++        int n = wifi::saved_list(nets, wifi::MAX_SAVED);
++        if (n > 0) wifi::connect_saved(nets[0].ssid);   // WiFi 页点已保存的网络
++        int64_t t4 = esp_timer_get_time();
++        bsp_display_unlock();
++        ESP_LOGW(TAG, "TESTBUILD uitest: 开关 %d ms，再开关 %d ms，扫描(返回 %d) %d ms，连接已保存(%d 条) %d ms；state=%d link_failed=%d scan_busy=%d",
++                 (int)((t1 - t0) / 1000), (int)((t2 - t1) / 1000), (int)sc, (int)((t3 - t2) / 1000),
++                 n, (int)((t4 - t3) / 1000), (int)wifi::status().state, (int)esp_hosted_link_failed(),
++                 (int)wifi::scan_busy());
++        return;
++    }
++    if (strncmp(arg, "semfail ", 8) == 0) {    // TESTBUILD：接下来 N 个同步 RPC 的信号量当作建不出来
++        testbuild_sem_fail = atoi(arg + 8);
++        ESP_LOGW(TAG, "TESTBUILD: testbuild_sem_fail=%d", (int)testbuild_sem_fail);
++        return;
++    }
++    if (strncmp(arg, "rpcfail ", 8) == 0) {    // TESTBUILD：连发 N 个 RPC，数失败、量耗时、看堆有没有漏
++        int n = atoi(arg + 8), fail = 0;
++        size_t h0 = heap_caps_get_free_size(MALLOC_CAP_INTERNAL), p0 = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
++        int64_t t0 = esp_timer_get_time();
++        for (int i = 0; i < n; i++) {
++            wifi_ap_record_t ap;
++            if (esp_wifi_sta_get_ap_info(&ap) != ESP_OK) fail++;
++        }
++        int64_t t1 = esp_timer_get_time();
++        vTaskDelay(pdMS_TO_TICKS(200));
++        size_t h1 = heap_caps_get_free_size(MALLOC_CAP_INTERNAL), p1 = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
++        ESP_LOGW(TAG, "TESTBUILD rpcfail: %d 次 RPC，失败 %d，共 %d ms；内部堆空闲 %u -> %u（%d），PSRAM 空闲 %u -> %u（%d）；堆完整性 %d",
++                 n, fail, (int)((t1 - t0) / 1000), (unsigned)h0, (unsigned)h1, (int)h1 - (int)h0,
++                 (unsigned)p0, (unsigned)p1, (int)p1 - (int)p0, (int)heap_caps_check_integrity_all(true));
++        return;
++    }
++    if (strncmp(arg, "fault ", 6) == 0) {      // TESTBUILD：故障注入
++        testbuild_rx_fault = atoi(arg + 6);
++        ESP_LOGW(TAG, "TESTBUILD: testbuild_rx_fault=%d", (int)testbuild_rx_fault);
++        return;
++    }
+     int us = 0;
+     if (sscanf(arg, "ackhold %d", &us) == 1 && us >= 0) {
+         esp_hosted_set_ack_hold_us((uint32_t)us);

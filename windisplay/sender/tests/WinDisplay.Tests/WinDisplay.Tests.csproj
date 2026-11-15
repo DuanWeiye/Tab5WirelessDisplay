@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- WinDisplay.Core 的单元测试（xunit）。和平台无关，Linux 上跑：dotnet test。
+       用到网络的几条在本机回环上起一个假的 Tab5（FakeTab5.cs），不需要真机，也不需要 Python。 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WinDisplay.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- SkiaSharp 在 Linux 上的原生库（Linux 开发机上跑测试要它；版本跟 Core 引的 SkiaSharp 一致） -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/WinDisplay.Core/WinDisplay.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 固件、C#、Python 三处实现共用的测试向量，在 sender/ 的外面（windisplay/testvectors/）。
+         同步到 Windows 的副本里它在 sender 那一层的 testvectors/ 下（scripts/winsync.sh 带过去的），所以两个位置都找 -->
+    <None Include="../../../testvectors/v2.json" Link="testvectors/v2.json" CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('../../../testvectors/v2.json')" />
+    <None Include="../../testvectors/v2.json" Link="testvectors/v2.json" CopyToOutputDirectory="PreserveNewest"
+          Condition="!Exists('../../../testvectors/v2.json') And Exists('../../testvectors/v2.json')" />
+  </ItemGroup>
+</Project>

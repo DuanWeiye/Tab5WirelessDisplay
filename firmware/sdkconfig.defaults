@@ -1,0 +1,180 @@
+# ===== 目标与 flash =====
+CONFIG_IDF_TARGET="esp32p4"
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# ===== PSRAM（32MB HEX @200MHz，与官方 UserDemo 一致）=====
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+
+# ===== L2 cache（MIPI-DSI 高分屏必需）=====
+CONFIG_CACHE_L2_CACHE_256KB=y
+CONFIG_CACHE_L2_CACHE_LINE_128B=y
+
+# ===== FreeRTOS =====
+CONFIG_FREERTOS_HZ=1000
+# IDLE 任务清理自删任务时会走 newlib 锁 + PPA 的 dma2d 锁，
+# 默认 1536 栈会溢出（IDLE0 Stack protection fault）。抬到 3072 留足余量。
+CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=3072
+
+# ===== 电源管理：DFS 动态调频（空闲降 CPU 频率省电）=====
+# 亮屏/操作时由 esp_pm_lock 锁满速 360MHz，无操作数秒后释放锁；配合 tickless idle，
+# 空闲时 DFS 自动把 CPU 降到 90MHz 并进 WFI（见 board::pmInit / screen_manager）。
+# ⚠️ tickless idle 只停 tick + 降频 + CPU 门控，外设（SDIO/PSRAM/WiFi）照常、中断照常唤醒；
+#    light_sleep_enable=false，绝不进 automatic light sleep（那会停 SDIO → WiFi 掉线，红线）。
+# 注：DFS 的 idle 降频必须靠 tickless 的 vApplicationSleep 钩子触发，只开 PM_ENABLE 不降频。
+CONFIG_PM_ENABLE=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+
+# ===== WiFi TX buffer：静态预分配（开机一次占住内部 RAM，运行期不受碎片化影响）=====
+# 曾是 menuconfig 手工配置、没进 defaults，2026-07-31 重生成 sdkconfig 时差点丢失——
+# 现固化于此。⚠️ esp-hosted 下真正可配置的是 WIFI_RMT_*（esp_wifi_remote 的 Kconfig），
+# ESP_WIFI_*/ESP32_WIFI_* 是它的只读镜像，直接写 ESP_WIFI_* 会被忽略。
+CONFIG_WIFI_RMT_STATIC_TX_BUFFER=y
+CONFIG_WIFI_RMT_STATIC_TX_BUFFER_NUM=16
+
+# ===== 运行时统计（调试台 '}'：待机功耗诊断，看谁在耗 CPU；时基 esp_timer，DFS 降频下也准）=====
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+CONFIG_FREERTOS_USE_STATS_FORMATTING_FUNCTIONS=y
+
+# ===== 堆策略：大块分配落 PSRAM（LVGL 绘制层缓冲需要）=====
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+# LP RAM（低功耗域，32KB）不进通用堆：它的访问比片内主 RAM 慢约 30 倍。进了堆以后，
+# 主 RAM 一满（本工程开机 30 秒就满），≤16KB 的 malloc 会先掉进 LP RAM、满了才轮到 PSRAM；
+# LVGL 的圆角蒙版缓冲 / 字形缓冲 / 对象落进去后渲染慢 3~5 倍，且随使用历史时快时慢。
+# 2026-11-11 实测：关掉后设置页整屏渲染 90~180ms → 33ms。
+# CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP is not set
+
+# ===== LVGL v9 =====
+# lv_malloc 走 C 库 malloc（→ ESP 堆，大块自动进 PSRAM）；
+# 内置内存池太小，整屏动画/变换的图层缓冲会分配失败死循环。
+CONFIG_LV_USE_CLIB_MALLOC=y
+CONFIG_LV_USE_CLIB_STRING=y
+CONFIG_LV_USE_CLIB_SPRINTF=y
+# 页面过渡淡入淡出需要把新屏离屏渲染成快照(lv_snapshot_take)
+CONFIG_LV_USE_SNAPSHOT=y
+CONFIG_LV_DEF_REFR_PERIOD=16
+# 阴影缓存：默认 0 = 同一个阴影每帧重算软件模糊。当初锁屏的解锁旋钮（锁屏已删；shadow_width24+radius42）
+# 实测每帧多花 60ms、拖动只有 15fps；开 80（角尺寸上限，静态 80²=6.4KB）后命中缓存，
+# 一次模糊终身复用。凡"带阴影的对象在动/被反复重绘"的场景都受益。
+CONFIG_LV_DRAW_SW_SHADOW_CACHE_SIZE=80
+CONFIG_LV_FONT_FMT_TXT_LARGE=y
+CONFIG_LV_USE_FONT_COMPRESSED=y
+# 内置西文字体（界面数字/符号/图标用）
+CONFIG_LV_FONT_MONTSERRAT_14=y
+CONFIG_LV_FONT_MONTSERRAT_16=y
+CONFIG_LV_FONT_MONTSERRAT_18=y
+CONFIG_LV_FONT_MONTSERRAT_20=y
+CONFIG_LV_FONT_MONTSERRAT_24=y
+CONFIG_LV_FONT_MONTSERRAT_28=y
+CONFIG_LV_FONT_MONTSERRAT_32=y
+CONFIG_LV_FONT_MONTSERRAT_40=y
+CONFIG_LV_FONT_MONTSERRAT_48=y
+
+# ===== 渲染性能：双核并行渲染（整屏切换动画掉帧的对策）=====
+CONFIG_LV_OS_FREERTOS=y
+CONFIG_LV_DRAW_SW_DRAW_UNIT_CNT=2
+# FAST_MEM：把 LVGL 渲染热点函数搬进内部 RAM(IRAM)，避免从 PSRAM XIP 取指的缓存未命中开销，
+# 是逼近原厂动画顺滑度的关键。静态占用 ~60KB 内部 .text。
+# ⚠️历史教训：直接开会和 esp-hosted SDIO(WiFi) 的 DMA 缓冲抢内部 RAM → sdio_rx_get_buffer 断言、
+# 进噪声/联网即重启。【方向C 已解决前提】先把网络任务的栈移到 PSRAM
+# （见 net/worker.cpp 的 xTaskCreatePinnedToCoreWithCaps），腾出内部 RAM 后再开本选项。
+# 历史数据（当时有 netw0/netw1/aprs/ssh 四个任务，后三个已随功能删除）：腾出 ~113KB，
+# 联网后余量 88KB→201KB，开本选项后余量 ~141KB。改后必须 rm sdkconfig 重建。
+CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM=y
+
+# ===== WiFi：esp-hosted 经 SDIO 连接板载 ESP32-C6（引脚照抄官方 UserDemo）=====
+# 从机芯片必须显式选 C6（esp_wifi_remote 的选项，默认是 esp32 → 通信协议错）
+CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
+CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE=y
+CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_LOW=y
+CONFIG_ESP_HOSTED_SDIO_OPTIMIZATION_RX_STREAMING_MODE=y
+CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=15
+CONFIG_ESP_HOSTED_SDIO_4_BIT_BUS=y
+CONFIG_ESP_HOSTED_SDIO_CLOCK_FREQ_KHZ=40000
+CONFIG_ESP_HOSTED_SDIO_PIN_CMD=13
+CONFIG_ESP_HOSTED_SDIO_PIN_CLK=12
+CONFIG_ESP_HOSTED_SDIO_PIN_D0=11
+# ⚠️ 4-bit 模式下 D1 实际由 PRIV_PIN_D1_4BIT_BUS 决定（不设会默认 15，与复位脚冲突 → CIS 探测超时）
+CONFIG_ESP_HOSTED_SDIO_PRIV_PIN_D1_4BIT_BUS=10
+CONFIG_ESP_HOSTED_SDIO_PIN_D1=10
+CONFIG_ESP_HOSTED_SDIO_PIN_D2=9
+CONFIG_ESP_HOSTED_SDIO_PIN_D3=8
+
+# （这个固件里已经没有 TLS 连接——HTTPS 客户端、LLM 网关都删了；下面两段说的握手 / 证书是当初量出来的依据。
+#   无线显示的配对和逐报文加密用的也是 mbedtls 的软件实现，硬件加速照样不能开、内存照样放 PSRAM。）
+# mbedtls 全走软件加密（关所有 HW 加速 AES/SHA/MPI/ECC）：HW 加密加速器要 DMA-capable
+# 内部 RAM，本工程内部 RAM 极紧（FAST_MEM/PSRAM 栈），网关 TLS 握手时抢不到 DMA 内存。
+# AES/SHA：HW 抢不到 DMA → -1 握手失败（esp-aes/esp-sha alloc fail）。
+# MPI/ECC（RSA/ECC 验签）：当初以为"保留不影响"，实测被证伪——HW MPI（中断驱动）做证书链
+# PK 验签时与 WiFi-SDIO 抢资源 → 同一证书**偶发**验签算错（0x4290 PK verify failed /
+# -0x3000 X509 verify failed），表现为外部 HTTPS 出口（如 deepseek RSA 证书）间歇 502
+# （6 次约 3 败）。软件验签确定性正确、不抢内部 DMA；LLM 流量轻，软件 RSA 慢一点可接受。
+# CONFIG_MBEDTLS_HARDWARE_AES is not set
+# CONFIG_MBEDTLS_HARDWARE_SHA is not set
+# CONFIG_MBEDTLS_HARDWARE_MPI is not set
+# CONFIG_MBEDTLS_HARDWARE_ECC is not set
+
+# mbedtls 内存改到 PSRAM 分配（默认 INTERNAL=内部 RAM）：证书链 RSA 验签的大数缓冲很吃内存，
+# 内部 RAM 紧（跟 WiFi-SDIO 抢）时偶发 `PK verify failed 0x4290`（=RSA_PUBLIC_FAILED|MPI_ALLOC_FAILED
+# 即 OOM）→ 外部 HTTPS 出口间歇 502，更深的证书链(qwen 云)直接 OOM 重启。改到 PSRAM(32MB 充裕)
+# 就不再 OOM。⚠️ 前提:HW 加密已全关(软件加密无 DMA 需求)，PSRAM 分配才安全。
+# CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC is not set
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+
+# 无线显示协议 v2 的认证和加密（main/wdisp_crypto.cpp）：逐报文加密用 ChaCha20-Poly1305
+# （软件实现实测 6.8 MB/s，AES-GCM 只有 0.8 MB/s），导出密钥用 HKDF。P-256、Curve25519、PBKDF2 默认就开着。
+CONFIG_MBEDTLS_POLY1305_C=y
+CONFIG_MBEDTLS_CHACHA20_C=y
+CONFIG_MBEDTLS_CHACHAPOLY_C=y
+CONFIG_MBEDTLS_HKDF_C=y
+
+# 保留更多内部 RAM 不给普通 malloc（32768→65536）：内部 RAM 低于此值时普通 malloc 转向
+# PSRAM，把连续内部 DMA 块留给 WiFi-SDIO。不影响显式 CAP_INTERNAL 的分配。
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=65536
+# ── TCP 接收窗口 64K（2026-11-11，为无线显示准备）──────────────────────
+# IDF 默认窗口 5760 字节时 TCP 收包只有 8 Mbps；16K → 15.4，32K → 22.6，64K → 28 Mbps
+# （2.4GHz 下 UDP 实测链路上限约 30 Mbps）。
+# 每个连接的收包邮箱取 64（不开窗口缩放时的上限；2026-11-13 从 48 改的）。IDF 建议的「窗口 ÷ MSS(1440) + 2」= 48
+# 只在每个段都是满的时候够用：窗口快满时对端每一批最后都带一个不满 MSS 的小段，64K 窗口里实测装了 50 段。
+# 邮箱满了 lwIP 手里暂存 1 段，再来的带数据的段直接丢（tcp_in.c 里 refused_data 那一支）。
+# 无线显示 3 帧在途、整屏滚动 300 帧：48 格时电脑重传 253 段、最后超时断开；64 格时一段没丢。
+# 协议栈线程的收包邮箱也是 64（同样是上限。IDF 说它「应当比每个连接的大」，到了上限只能相等；邮箱里只是指针）。
+# 代价：应用来不及读的时候，每条连接最多多攒约 64KB 收到的数据；包数据由 esp-hosted
+# 放在 PSRAM 里（见 components/esp_hosted/LOCAL_CHANGES.md），内部 RAM 里只剩每包几十字节的 pbuf 头。
+CONFIG_LWIP_TCP_WND_DEFAULT=65535
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=64
+CONFIG_LWIP_TCPIP_RECVMBOX_SIZE=64
+# ── TCP 丢了段之后不塌掉（2026-11-13，无线显示量出来的）──────────────────────
+# IDF 默认乱序队列只留 4 个段、不发 SACK：64K 窗口里丢一个段，后面到的约 45 段只留 4 段，其余全部作废，
+# 对端一个确认只能重发一个段，再丢就等超时（逐次翻倍）——实测帧率掉到 1~2 帧/秒、最后超时断开。
+# 乱序队列留 12 个包（IDF 允许的最大值），开 SACK 让对端知道哪些已经收到。只开这两项、邮箱还是 48 时照样丢段，
+# 但几十毫秒就补上：整屏滚动 3 帧在途 35 帧/秒、不卡不断，电脑多重传 1.4% 的数据（排在 12 个包之后的要重发）。
+# 不取 0（不设上限）：那样每条连接的乱序队列只受窗口字节数限制，对端把窗口切成很多 1 字节的乱序小段时能挂上万段，
+# 每段在内部 RAM 里占一个 pbuf 头 + tcp_seg（包数据在 PSRAM），内部内存会被耗光。0 实测帧率和 12 一样，只是少重传一些（11 段对 115 段）。
+# 加上邮箱 64 之后这个场景不再丢段，这两项留着兜底（空口丢包、别的写法的发送端）。
+CONFIG_LWIP_TCP_OOSEQ_MAX_PBUFS=12
+CONFIG_LWIP_TCP_SACK_OUT=y
+# ── TCP 定时器间隔 50 ms：丢了的小包零点几秒就重发，不用等 1 秒多（2026-11-13，无线显示抓包量出来的）──
+# lwIP 的重传超时按「2 × 这个间隔」的格数算。IDF 默认 250 ms，一格就是 500 ms，局域网里重传超时实测 1.1~1.5 秒（再丢一次 2.4 秒）。
+# 设备往外发的小包（无线显示每帧的确认、触摸、按键，一个包几十字节）在上行丢了的时候（实测千分之四上下），
+# 要对端回够 3 个 lwIP 认的重复确认才立刻重发；它认得很挑（不能带数据、通告的窗口不能变），实测四次里有一次凑不够，
+# 只能等这个超时，画面和输入跟着停。50 ms 时一格 100 ms，凑不够的那些 0.23~0.5 秒补上。
+# 影响所有 TCP 连接：按格数算的还有零窗口探测（更勤）、乱序队列超时、放弃连接之前的总时间（缩到约五分之一，仍是几分钟）；
+# 按毫秒配的（保活、TIME_WAIT、建连接时第一次超时 1.5 秒）不变；延迟确认最多攒 50 ms（原来 250 ms）。
+# 这个定时器只在有活动的 TCP 连接时才跑，没有连接时不多唤醒。
+CONFIG_LWIP_TCP_TMR_INTERVAL=50
+# ── TCP 的 TIME_WAIT 缩短到 4 秒（2026-11-12）──────────────────────────
+# 先关连接的一方要在 TIME_WAIT 里待 2 × MSL。IDF 默认 MSL 60 秒 = 待 120 秒，这期间对端如果又用同一个源端口来连，
+# lwIP 只回旧连接的 ACK、还忽略对方的 RST，这个端口就一直连不上（实测过）。
+# 局域网里迟到的旧报文不会晚到几秒以后，MSL 取 2 秒（单位毫秒）。
+CONFIG_LWIP_TCP_MSL=2000

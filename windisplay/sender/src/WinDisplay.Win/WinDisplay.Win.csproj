@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Windows 专有的部分：抓屏（WGC）、在显卡上缩放到 1280×720。只能在 Windows 11 上跑；Linux 上能编译，不能跑。
+       名字不叫 WinDisplay.Windows：那样在这个命名空间里写 Windows.Graphics.Capture 会被当成 WinDisplay.Windows.Graphics。 -->
+  <PropertyGroup>
+    <!-- 10.0.22621 是引用的 Windows SDK 版本（要有无黄框抓屏、按显示器创建抓屏对象这些接口）；最低能跑的系统是 Windows 11（10.0.22000） -->
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+    <RootNamespace>WinDisplay.Win</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WinDisplay.Core/WinDisplay.Core.csproj" />
+    <!-- Direct3D 11 的托管封装：建设备、跑缩放的着色器、把结果读回内存 -->
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinDisplay.Win.Tests" />
+  </ItemGroup>
+</Project>

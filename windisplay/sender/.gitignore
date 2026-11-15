@@ -1,0 +1,11 @@
+# 构建产物
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+# 发布产物、本地环境（含主机地址 / 凭据），不入库
+.work/
+*.local.json
+.env
+scripts/wininfo.env

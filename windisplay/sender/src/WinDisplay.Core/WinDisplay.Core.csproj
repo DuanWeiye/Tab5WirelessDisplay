@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 发送端的核心：协议、画面转成条带（转 90°、找变化、压 JPEG）、流量控制、连接。和平台无关，Linux 上也能跑和测。 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WinDisplay.Core</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 缩放和 JPEG 编码（内部是 libjpeg-turbo）。原生库：Windows 的随主包来；Linux 的要另引一个包，
+         由要在 Linux 上跑的项目（命令行程序、测试）自己引，不放在这里——不然 Windows 程序的发布产物里也会带上 Linux 的库 -->
+    <PackageReference Include="SkiaSharp" Version="3.119.1" />
+    <!-- 配对用的 P-256 点运算（SPAKE2 要拿到完整的点，.NET 自带的 ECDH 只给 X 坐标）和 X25519（.NET 自带的没有）。
+         其余的（ChaCha20-Poly1305、HKDF、PBKDF2、HMAC、SHA-256）用 .NET 自带的 -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinDisplay.Tests" />
+    <InternalsVisibleTo Include="WinDisplay.Win" />
+    <InternalsVisibleTo Include="WinDisplay.Win.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 命令行测试发送端（wdsend）：把画面经 WinDisplay.Core 发给 Tab5，打印帧率和各项耗时。用来验证核心库（对着 windisplay/tools/wd_mock_tab5.py 或真机）。
+       编两份：net10.0 的那份发生成的测试画面，Linux 和 Windows 上都能跑；net10.0-windows 的那份多了抓屏（screen、screen-check 两个选项）
+       和输入注入（input、inject-check 两个选项），只能在 Windows 11 上跑。 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net10.0;net10.0-windows10.0.22621.0</TargetFrameworks>
+    <SupportedOSPlatformVersion Condition="'$(TargetFramework)' != 'net10.0'">10.0.22000.0</SupportedOSPlatformVersion>
+    <AssemblyName>wdsend</AssemblyName>
+    <RootNamespace>WinDisplay.Cli</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WinDisplay.Core/WinDisplay.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <!-- SkiaSharp 在 Linux 上的原生库（Linux 开发机上跑要它；版本跟 Core 引的 SkiaSharp 一致） -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.1" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' != 'net10.0'">
+    <ProjectReference Include="../WinDisplay.Win/WinDisplay.Win.csproj" />
+  </ItemGroup>
+</Project>

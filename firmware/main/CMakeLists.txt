@@ -1,0 +1,40 @@
+file(GLOB UI_SRCS ui/*.cpp ui/fonts/*.c)
+
+idf_component_register(
+    SRCS
+        "app_main.cpp"
+        "app.cpp"
+        "board.cpp"
+        "audio_mic.cpp"
+        "debug_console.cpp"
+        "settings_store.cpp"
+        "wdisp.cpp"
+        "wdisp_crypto.cpp"
+        "wdisp_pair.cpp"
+        "wd_audio.cpp"
+        "wd_osd.cpp"
+        "utils/hwjpeg.cpp"
+        "utils/tab5_kbd.cpp"
+        "net/wifi.cpp"
+        "net/worker.cpp"
+        "net/nettest.cpp"
+        ${UI_SRCS}
+    INCLUDE_DIRS "."
+    REQUIRES
+        esp_app_format
+        driver
+        nvs_flash
+        esp_timer
+        esp_wifi
+        esp_netif
+        lwip
+        esp_event
+        mbedtls
+        bootloader_support
+        m5stack_tab5
+        power_monitor_ina226
+        esp_lvgl_port
+        lvgl
+        esp_driver_jpeg
+        esp_driver_ppa
+)
